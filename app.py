@@ -732,26 +732,39 @@ def page_ai_study_guide(
     )
     st.session_state["study_prompt"] = prompt
 
+    st.markdown("**OpenAI API key (for live AI text)**")
+    st.text_input(
+        "Paste your key here (optional) — only for this browser session, never saved to GitHub. "
+        "Use if Streamlit **Settings → Secrets** is not set or not working.",
+        type="password",
+        key="openai_session_key",
+        autocomplete="off",
+        help="Get a key at platform.openai.com — stored only in this app session in memory.",
+    )
+    st.caption(
+        "If you use **Streamlit Cloud → Secrets** instead, leave the box empty. "
+        "TOML must be exactly: OPENAI_API_KEY = \"sk-...\"  (no missing quotes on one line)."
+    )
+
     key_set = bool(get_openai_api_key())
     if key_set:
-        st.caption("OpenAI API key is configured — **Generate** will call the model (**gpt-4o-mini**).")
+        st.caption("API key is available — **Generate** will call **gpt-4o-mini** (or shows an error if the key is invalid).")
     else:
-        st.caption("No **OPENAI_API_KEY** — **Generate** will show the **offline sample** (not a live model).")
-        with st.expander("How to get **live** AI advice (if you only see the offline sample)", expanded=True):
+        st.caption("No key yet — **Generate** will use the **offline sample** text.")
+        with st.expander("How to enable live AI (Streamlit Cloud + local)", expanded=False):
             st.markdown(
-                "**A. If this app is opened from Streamlit Community Cloud (share.streamlit.io):**  \n"
-                "Local `setx` does **not** work in the cloud. In your app: **⋮** (or **Manage app**) → "
-                "**Settings** → **Secrets** → paste, **Save**:  \n"
+                "**Streamlit Community Cloud (recommended, persistent):**  \n"
+                "App **⋮** → **Settings** → **Secrets** — paste in the editor (exact format):\n\n"
                 "```toml\n"
-                'OPENAI_API_KEY = "sk-...your-key-here..."\n'
-                "```\n"
-                "Then **Reboot** the app and click **Generate** again. The key is stored only in Streamlit, not in GitHub.\n\n"
-                "**B. If you run the app on your own PC** (`streamlit run app.py`):  \n"
-                "Set the environment variable `OPENAI_API_KEY` or add `.streamlit/secrets.toml` (see `README.md`)."
+                'OPENAI_API_KEY = "sk-proj-xxxxxxxx"\n'
+                "```\n\n"
+                "Click **Save** → **Reboot** app. Wait 1–2 min.  \n"
+                "**Troubleshooting:** no spaces around `=`; key on **one line** in double quotes. If it still fails, use the **password field above** for a quick demo (session only).\n\n"
+                "**On your computer:** set env var `OPENAI_API_KEY` or `.streamlit/secrets.toml`."
             )
 
     if st.button("Generate AI Study Guide", use_container_width=True, type="primary"):
-        with st.spinner("Calling the model to build your study guide…" if key_set else "Building the sample study guide…"):
+        with st.spinner("Calling the model to build your study guide…" if get_openai_api_key() else "Building the sample study guide (no key)…"):
             st.session_state["study_guide"] = generate_ai_study_guide(prompt)
         st.success("Done. Scroll to **4. Personalized study guide** below.")
 
@@ -790,29 +803,90 @@ def page_ai_study_guide(
 
 def get_openai_api_key() -> str:
     """
-    Read API key from environment (local) or Streamlit Cloud Secrets (st.secrets).
-    Cloud users must set OPENAI_API_KEY in: Deployed app > ⋮ > Settings > Secrets.
+    Resolve OpenAI key in this order: env var → session text box → st.secrets (all access patterns).
     """
     k = (os.environ.get("OPENAI_API_KEY") or "").strip()
-    if k and k not in ("your-api-key", "sk-placeholder"):
-        return k
+    if k and not k.lower().startswith("sk-placeholder") and "paste" not in k.lower():
+        if len(k) > 10:
+            return k
+
+    # Session-only key (user pasted in the AI page — works on Cloud when Secrets fail)
     try:
-        # Streamlit Community Cloud (TOML: OPENAI_API_KEY = "sk-...")
-        sec = st.secrets
-        if sec is not None:
-            for name in ("OPENAI_API_KEY", "openai_api_key"):
-                if name in sec:
-                    v = str(sec[name]).strip()
-                    if v:
-                        os.environ["OPENAI_API_KEY"] = v
-                        return v
-            if "openai" in sec and isinstance(sec["openai"], dict):
-                v = (sec["openai"].get("api_key") or sec["openai"].get("OPENAI_API_KEY") or "").strip()
-                if v:
-                    os.environ["OPENAI_API_KEY"] = v
-                    return v
-    except (FileNotFoundError, TypeError, KeyError, RuntimeError, AttributeError):
+        u = (st.session_state.get("openai_session_key") or "").strip()
+        if u and len(u) > 20 and u.startswith("sk-"):
+            return u
+    except Exception:
         pass
+
+    def _from_secrets() -> str:
+        try:
+            sec = st.secrets
+        except (FileNotFoundError, OSError, RuntimeError):
+            return ""
+        if sec is None:
+            return ""
+
+        def try_get(n: str) -> str:
+            for nm in (n, n.lower(), n.upper()):
+                try:
+                    v = sec[nm]  # type: ignore
+                    s = str(v).strip() if v is not None else ""
+                    if s and s not in ("None", ""):
+                        return s
+                except (KeyError, TypeError, IndexError):
+                    try:
+                        v = getattr(sec, nm, None)
+                        if v is not None:
+                            s = str(v).strip()
+                            if s:
+                                return s
+                    except Exception:
+                        pass
+            return ""
+
+        for n in (
+            "OPENAI_API_KEY",
+            "openai_api_key",
+            "OPENAI_KEY",
+            "api_key",
+        ):
+            val = try_get(n)
+            if val:
+                return val
+
+        # Nested [openai] api_key = "..." in TOML
+        try:
+            inner = sec["openai"]
+            if isinstance(inner, dict):
+                for kk in ("api_key", "OPENAI_API_KEY", "key", "Key"):
+                    if inner.get(kk):
+                        s = str(inner[kk]).strip()
+                        if s:
+                            return s
+        except Exception:
+            pass
+
+        # Any secret whose name contains OPENAI
+        try:
+            keys = list(sec.keys())  # type: ignore
+        except Exception:
+            keys = []
+        for name in keys:
+            if "openai" in str(name).lower() or (str(name).lower() == "api_key"):
+                try:
+                    val = str(sec[name]).strip()  # type: ignore
+                except Exception:
+                    continue
+                if val and val.startswith("sk-"):
+                    return val
+
+        return ""
+
+    skey = _from_secrets()
+    if skey:
+        os.environ["OPENAI_API_KEY"] = skey
+        return skey
+
     return ""
 
 
