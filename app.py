@@ -759,20 +759,10 @@ def page_ai_study_guide(
     )
     st.session_state["study_prompt"] = prompt
 
-    st.markdown("**OpenAI key (for live AI text)**")
     st.caption(
-        "**Deployer (you):** set the key **once** in **Streamlit Cloud → Settings → Secrets** — then "
-        "visitors never need to type. **Or** for local `streamlit run`, add `openai_key_local.txt` (gitignored) "
-        "next to `app.py` with your `sk-` on one line — see `openai_key_local.txt.example`."
+        "**OpenAI (live text):** configure **Streamlit Cloud → Settings → Secrets** with `OPENAI_API_KEY`, "
+        "or for local runs use `openai_key_local.txt` (see `openai_key_local.txt.example`)."
     )
-    with st.expander("Optional: paste key for this browser session only (if Secrets are not set)", expanded=False):
-        st.text_input(
-            "Session key (not saved to GitHub)",
-            type="password",
-            key="openai_session_key",
-            autocomplete="off",
-            help="Cleared when the tab session ends. Prefer Cloud Secrets for a permanent fix.",
-        )
 
     key_set = bool(get_openai_api_key())
     if key_set:
@@ -787,8 +777,8 @@ def page_ai_study_guide(
                 'OPENAI_API_KEY = "sk-proj-xxxxxxxx"\n'
                 "```\n\n"
                 "Click **Save** → **Reboot** app. Wait 1–2 min.  \n"
-                "**Troubleshooting:** no spaces around `=`; key on **one line** in double quotes. If it still fails, use the **password field above** for a quick demo (session only).\n\n"
-                "**On your computer:** set env var `OPENAI_API_KEY` or `.streamlit/secrets.toml`."
+                "**Troubleshooting:** key on **one line** in double quotes; valid TOML.\n\n"
+                "**On your computer:** env var `OPENAI_API_KEY`, or `.streamlit/secrets.toml`, or `openai_key_local.txt`."
             )
 
     if st.button("Generate AI Study Guide", use_container_width=True, type="primary"):
@@ -831,21 +821,13 @@ def page_ai_study_guide(
 
 def get_openai_api_key() -> str:
     """
-    Resolve OpenAI key in this order: env var → local file (local dev) → session text box → st.secrets.
+    Resolve OpenAI key: env var → local file (openai_key_local.txt) → st.secrets (Streamlit Cloud).
     """
     _load_local_openai_key_file()
     k = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if k and not k.lower().startswith("sk-placeholder") and "paste" not in k.lower():
         if len(k) > 10:
             return k
-
-    # Session-only key (user pasted in the AI page — works on Cloud when Secrets fail)
-    try:
-        u = (st.session_state.get("openai_session_key") or "").strip()
-        if u and len(u) > 20 and u.startswith("sk-"):
-            return u
-    except Exception:
-        pass
 
     def _from_secrets() -> str:
         try:
