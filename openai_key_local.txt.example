@@ -1,0 +1,8 @@
+# Copy this file to: openai_key_local.txt
+# Put your real OpenAI API key on ONE line below (starts with sk-).
+# openai_key_local.txt is listed in .gitignore — never commit it.
+#
+# Use only for local: streamlit run app.py
+# For https://xxx.streamlit.app use Streamlit Cloud → Settings → Secrets instead.
+
+sk-replace-with-your-key

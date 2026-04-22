@@ -9,6 +9,33 @@ import streamlit as st
 
 WORKBOOK_PATH = Path("./Excel_Readiness_AI_Coach_Content_Pack.xlsx")
 
+# Local-only file (gitignored): put your sk- key on one line next to app.py — for `streamlit run` on your PC.
+# Do NOT commit the real file. Public websites should use Streamlit Cloud → Settings → Secrets instead.
+_LOCAL_OPENAI_KEY_FILE = "openai_key_local.txt"
+_local_key_file_read: bool = False
+
+
+def _load_local_openai_key_file() -> None:
+    """Load OPENAI_API_KEY from openai_key_local.txt once (never commit that file)."""
+    global _local_key_file_read
+    if _local_key_file_read:
+        return
+    _local_key_file_read = True
+    try:
+        p = Path(__file__).resolve().parent / _LOCAL_OPENAI_KEY_FILE
+        if not p.is_file():
+            return
+        raw = p.read_text(encoding="utf-8").strip()
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("sk-") and len(line) > 20:
+                os.environ.setdefault("OPENAI_API_KEY", line)
+                return
+    except OSError:
+        pass
+
 
 def normalize_col_name(name: str) -> str:
     return "".join(ch for ch in str(name).strip().lower() if ch.isalnum())
@@ -732,19 +759,20 @@ def page_ai_study_guide(
     )
     st.session_state["study_prompt"] = prompt
 
-    st.markdown("**OpenAI API key (for live AI text)**")
-    st.text_input(
-        "Paste your key here (optional) — only for this browser session, never saved to GitHub. "
-        "Use if Streamlit **Settings → Secrets** is not set or not working.",
-        type="password",
-        key="openai_session_key",
-        autocomplete="off",
-        help="Get a key at platform.openai.com — stored only in this app session in memory.",
-    )
+    st.markdown("**OpenAI key (for live AI text)**")
     st.caption(
-        "If you use **Streamlit Cloud → Secrets** instead, leave the box empty. "
-        "TOML must be exactly: OPENAI_API_KEY = \"sk-...\"  (no missing quotes on one line)."
+        "**Deployer (you):** set the key **once** in **Streamlit Cloud → Settings → Secrets** — then "
+        "visitors never need to type. **Or** for local `streamlit run`, add `openai_key_local.txt` (gitignored) "
+        "next to `app.py` with your `sk-` on one line — see `openai_key_local.txt.example`."
     )
+    with st.expander("Optional: paste key for this browser session only (if Secrets are not set)", expanded=False):
+        st.text_input(
+            "Session key (not saved to GitHub)",
+            type="password",
+            key="openai_session_key",
+            autocomplete="off",
+            help="Cleared when the tab session ends. Prefer Cloud Secrets for a permanent fix.",
+        )
 
     key_set = bool(get_openai_api_key())
     if key_set:
@@ -803,8 +831,9 @@ def page_ai_study_guide(
 
 def get_openai_api_key() -> str:
     """
-    Resolve OpenAI key in this order: env var → session text box → st.secrets (all access patterns).
+    Resolve OpenAI key in this order: env var → local file (local dev) → session text box → st.secrets.
     """
+    _load_local_openai_key_file()
     k = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if k and not k.lower().startswith("sk-placeholder") and "paste" not in k.lower():
         if len(k) > 10:

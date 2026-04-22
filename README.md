@@ -44,15 +44,19 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 2. **New app** → select your new repository, branch `main`, main file **`app.py`**.  
 3. **Deploy.** Your app will get a public URL like `https://your-app-name.streamlit.app` — share that with your professor.
 
-### Step 4 (optional) — OpenAI on the server
+### Step 4 (optional) — OpenAI so visitors never type a key
 
-In the Streamlit Cloud app: **⋮ (Manage app) → Settings → Secrets** and add:
+**Never** put a real `sk-` key in `app.py` or any file committed to a **public** repo.
+
+- **Streamlit Cloud (the public site):** set the key **once** in **Manage app → Settings → Secrets**:
 
 ```toml
 OPENAI_API_KEY = "sk-...your-key..."
 ```
 
-Redeploy or restart the app. **Do not** commit API keys to GitHub.
+Save → **Reboot** the app. Then everyone who opens your `.streamlit.app` link gets live AI without pasting (API usage is billed to your OpenAI account—set limits at platform.openai.com).
+
+- **Local `streamlit run` only:** copy `openai_key_local.txt.example` to `openai_key_local.txt`, one line with your `sk-` key. That file is **gitignored** and never goes to GitHub.
 
 ## Local OpenAI (optional, for `streamlit run` on your PC)
 
