@@ -520,7 +520,7 @@ def generate_ai_study_guide(prompt: str) -> str:
     """
     Uses the OpenAI API when OPENAI_API_KEY is set; otherwise returns a local placeholder.
     """
-    key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    key = get_openai_api_key()
     if not key:
         return _placeholder_study_guide(prompt)
 
@@ -732,14 +732,23 @@ def page_ai_study_guide(
     )
     st.session_state["study_prompt"] = prompt
 
-    key_set = bool((os.environ.get("OPENAI_API_KEY") or "").strip())
+    key_set = bool(get_openai_api_key())
     if key_set:
-        st.caption("OpenAI API key detected — **Generate** will call the model (gpt-4o-mini).")
+        st.caption("OpenAI API key is configured — **Generate** will call the model (**gpt-4o-mini**).")
     else:
-        st.caption(
-            "No **OPENAI_API_KEY** in the environment — **Generate** will use the built-in sample text. "
-            "Restart Streamlit after `setx` so the key is loaded."
-        )
+        st.caption("No **OPENAI_API_KEY** — **Generate** will show the **offline sample** (not a live model).")
+        with st.expander("How to get **live** AI advice (if you only see the offline sample)", expanded=True):
+            st.markdown(
+                "**A. If this app is opened from Streamlit Community Cloud (share.streamlit.io):**  \n"
+                "Local `setx` does **not** work in the cloud. In your app: **⋮** (or **Manage app**) → "
+                "**Settings** → **Secrets** → paste, **Save**:  \n"
+                "```toml\n"
+                'OPENAI_API_KEY = "sk-...your-key-here..."\n'
+                "```\n"
+                "Then **Reboot** the app and click **Generate** again. The key is stored only in Streamlit, not in GitHub.\n\n"
+                "**B. If you run the app on your own PC** (`streamlit run app.py`):  \n"
+                "Set the environment variable `OPENAI_API_KEY` or add `.streamlit/secrets.toml` (see `README.md`)."
+            )
 
     if st.button("Generate AI Study Guide", use_container_width=True, type="primary"):
         with st.spinner("Calling the model to build your study guide…" if key_set else "Building the sample study guide…"):
@@ -779,14 +788,37 @@ def page_ai_study_guide(
         st.code(st.session_state.get("study_prompt", prompt), language="markdown")
 
 
-def _apply_streamlit_secrets_to_env() -> None:
-    """Streamlit Community Cloud stores keys in st.secrets; map to os.environ for OpenAI client."""
+def get_openai_api_key() -> str:
+    """
+    Read API key from environment (local) or Streamlit Cloud Secrets (st.secrets).
+    Cloud users must set OPENAI_API_KEY in: Deployed app > ⋮ > Settings > Secrets.
+    """
+    k = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if k and k not in ("your-api-key", "sk-placeholder"):
+        return k
     try:
-        key = st.secrets.get("OPENAI_API_KEY")
-        if key:
-            os.environ["OPENAI_API_KEY"] = str(key).strip()
-    except Exception:
+        # Streamlit Community Cloud (TOML: OPENAI_API_KEY = "sk-...")
+        sec = st.secrets
+        if sec is not None:
+            for name in ("OPENAI_API_KEY", "openai_api_key"):
+                if name in sec:
+                    v = str(sec[name]).strip()
+                    if v:
+                        os.environ["OPENAI_API_KEY"] = v
+                        return v
+            if "openai" in sec and isinstance(sec["openai"], dict):
+                v = (sec["openai"].get("api_key") or sec["openai"].get("OPENAI_API_KEY") or "").strip()
+                if v:
+                    os.environ["OPENAI_API_KEY"] = v
+                    return v
+    except (FileNotFoundError, TypeError, KeyError, RuntimeError, AttributeError):
         pass
+    return ""
+
+
+def _apply_streamlit_secrets_to_env() -> None:
+    """Copy Cloud secrets into os.environ as early as possible in the run."""
+    get_openai_api_key()
 
 
 def main() -> None:
