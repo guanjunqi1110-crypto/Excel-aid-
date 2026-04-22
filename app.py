@@ -598,6 +598,13 @@ def initialize_session_state() -> None:
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    if "app_step" not in st.session_state:
+        st.session_state["app_step"] = (
+            "post_quiz"
+            if st.session_state.get("submitted")
+            and st.session_state.get("results") is not None
+            else "welcome"
+        )
 
 
 def reset_diagnostic_state() -> None:
@@ -612,6 +619,7 @@ def reset_diagnostic_state() -> None:
     st.session_state["study_prompt"] = ""
     st.session_state["study_guide"] = ""
     st.session_state["rec_mode"] = "none"
+    st.session_state["app_step"] = "welcome"
 
 
 def page_welcome() -> None:
@@ -623,13 +631,30 @@ def page_welcome() -> None:
         "plus an AI-generated study guide."
     )
     st.info(
-        "Use the sidebar to move through Welcome → Diagnostic Quiz → Results → AI Study Guide. "
-        "Your recommended resources appear on the AI Study Guide page after you complete the quiz."
+        "The flow is linear: **Welcome** → **Diagnostic** → **Results** and **AI study guide** on one page after you submit. "
+        "No sidebar menu—just follow the steps."
     )
+    if st.button("Start diagnostic", type="primary", use_container_width=True):
+        st.session_state["app_step"] = "quiz"
+        st.rerun()
+    if st.session_state.get("submitted") and st.session_state.get("results") is not None:
+        if st.button("Continue to your results & study guide", use_container_width=True):
+            st.session_state["app_step"] = "post_quiz"
+            st.rerun()
+        st.caption("Or start a **new** run (clears answers, score, and study guide):")
+        if st.button("Start over", use_container_width=True):
+            reset_diagnostic_state()
+            st.rerun()
 
 
 def page_diagnostic_quiz(questions: List[Dict]) -> None:
-    st.title("Diagnostic Quiz")
+    t1, t2 = st.columns([3, 1])
+    with t1:
+        st.title("Diagnostic Quiz")
+    with t2:
+        if st.button("Back to home", use_container_width=True, help="Return to the welcome page"):
+            st.session_state["app_step"] = "welcome"
+            st.rerun()
     st.write("Answer each question using the multiple-choice options.")
 
     with st.form("quiz_form"):
@@ -674,15 +699,20 @@ def page_diagnostic_quiz(questions: List[Dict]) -> None:
             results = evaluate_quiz(questions, st.session_state["responses"])
             st.session_state["results"] = results
             st.session_state["submitted"] = True
-            st.success("Quiz submitted. Go to the Results page.")
+            st.session_state["app_step"] = "post_quiz"
+            st.rerun()
 
 
-def page_results() -> None:
-    st.title("Results")
-
+def page_results(
+    *, hide_outer_heading: bool = False, hide_caption: bool = False
+) -> bool:
     if not st.session_state["submitted"] or st.session_state["results"] is None:
         st.warning("Please complete and submit the Diagnostic Quiz first.")
-        return
+        return False
+    if not hide_outer_heading:
+        st.subheader("Your results")
+    if not hide_caption:
+        st.caption("Based on this diagnostic only—not a course grade.")
 
     results = st.session_state["results"]
     st.metric("Total Score", f"{results['score_pct']:.1f}%")
@@ -716,12 +746,19 @@ def page_results() -> None:
     if stats_rows:
         st.subheader("Module Breakdown")
         st.dataframe(pd.DataFrame(stats_rows), use_container_width=True, hide_index=True)
+    return True
 
 
 def page_ai_study_guide(
-    prompt_template_df: pd.DataFrame, material_df: pd.DataFrame
+    prompt_template_df: pd.DataFrame,
+    material_df: pd.DataFrame,
+    *,
+    embedded: bool = False,
 ) -> None:
-    st.title("AI Study Guide")
+    if embedded:
+        st.subheader("AI study guide & resources")
+    else:
+        st.title("AI Study Guide")
 
     if not st.session_state["submitted"] or st.session_state["results"] is None:
         st.warning("Please complete the quiz first.")
@@ -819,6 +856,38 @@ def page_ai_study_guide(
         st.code(st.session_state.get("study_prompt", prompt), language="markdown")
 
 
+def page_post_quiz(
+    prompt_template_df: pd.DataFrame, material_df: pd.DataFrame
+) -> None:
+    """After the quiz: show results, then a short bridge, then the AI study guide (one scrollable page)."""
+    st.title("Your results & study plan")
+    st.caption("Results first. Below that, your AI study guide and resource cards—scroll when you are ready.")
+    st.subheader("1. Your results")
+    if not page_results(hide_outer_heading=True, hide_caption=True):
+        st.error("We could not load your scores. Return to the quiz and submit your answers again.")
+        if st.button("Go to the diagnostic", type="primary"):
+            st.session_state["app_step"] = "quiz"
+            st.rerun()
+        return
+
+    st.divider()
+    st.subheader("2. What’s next?")
+    st.write(
+        "Next, use **AI study guide & resources** to get a short personalized plan, a practice task, and "
+        "materials matched to your weak modules. Scroll down to the next section, or use **Start over** at the bottom "
+        "if you want a fresh run."
+    )
+    page_ai_study_guide(
+        prompt_template_df,
+        material_df,
+        embedded=True,
+    )
+    st.divider()
+    if st.button("Start over (new diagnostic run)", use_container_width=True, type="secondary"):
+        reset_diagnostic_state()
+        st.rerun()
+
+
 def get_openai_api_key() -> str:
     """
     Resolve OpenAI key: env var → local file (openai_key_local.txt) → st.secrets (Streamlit Cloud).
@@ -906,21 +975,29 @@ def _apply_streamlit_secrets_to_env() -> None:
     get_openai_api_key()
 
 
+def _hide_default_sidebar() -> None:
+    """No sidebar nav: this app uses a linear welcome → quiz → results + study guide flow."""
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
-    st.set_page_config(page_title="Excel Readiness AI Coach", page_icon="📊", layout="wide")
+    st.set_page_config(
+        page_title="Excel Readiness AI Coach",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
     _apply_streamlit_secrets_to_env()
     initialize_session_state()
-
-    st.sidebar.title("Navigation")
-    st.sidebar.caption("To start over: use the button below. It clears your answers, score, and study guide.")
-    if st.sidebar.button("Retake diagnostic", use_container_width=True):
-        reset_diagnostic_state()
-        st.rerun()
-    st.sidebar.divider()
-    page = st.sidebar.radio(
-        "Go to",
-        ["Welcome", "Diagnostic Quiz", "Results", "AI Study Guide"],
-    )
+    _hide_default_sidebar()
 
     try:
         data = load_workbook_data(WORKBOOK_PATH)
@@ -935,17 +1012,24 @@ def main() -> None:
         st.error(f"Could not load workbook data: {exc}")
         st.stop()
 
-    if page == "Welcome":
+    app_step = st.session_state.get("app_step", "welcome")
+    if app_step == "post_quiz" and (
+        not st.session_state.get("submitted") or st.session_state.get("results") is None
+    ):
+        st.session_state["app_step"] = "quiz"
+        app_step = "quiz"
+    if app_step == "welcome":
         page_welcome()
-    elif page == "Diagnostic Quiz":
+    elif app_step == "quiz":
         page_diagnostic_quiz(questions)
-    elif page == "Results":
-        page_results()
-    elif page == "AI Study Guide":
-        page_ai_study_guide(
+    elif app_step == "post_quiz":
+        page_post_quiz(
             data["AI Prompt Template"],
             data["Material Library"],
         )
+    else:
+        st.session_state["app_step"] = "welcome"
+        st.rerun()
 
 
 if __name__ == "__main__":
