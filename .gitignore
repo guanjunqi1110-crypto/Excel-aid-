@@ -9,6 +9,7 @@
 !push-to-github.ps1
 !Excel_Readiness_AI_Coach_Content_Pack.xlsx
 !Excel_Readiness_AI_Coach_Content_Pack_with_sources.xlsx
+!Excel_Readiness_AI_Coach_Content_Pack_with_books.xlsx
 !.streamlit/
 
 # Local API keys (do not commit)

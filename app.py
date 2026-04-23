@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 
-WORKBOOK_PATH = Path("./Excel_Readiness_AI_Coach_Content_Pack_with_sources.xlsx")
+WORKBOOK_PATH = Path("./Excel_Readiness_AI_Coach_Content_Pack_with_books.xlsx")
 
 # Local-only file (gitignored): put your sk- key on one line next to app.py — for `streamlit run` on your PC.
 # Do NOT commit the real file. Public websites should use Streamlit Cloud → Settings → Secrets instead.
@@ -256,6 +256,51 @@ def _normalize_isbn_cell(val: object) -> str:
     return s
 
 
+# In larger content packs, author/ISBN can appear in more than one column (e.g. “Book
+# Author(s)” + “Book ISBN” vs “Author / Source” + “ISBN / Identifier”); order = priority.
+MATERIAL_AUTHOR_COL_PRIORITY = [
+    "Book Author(s)",
+    "Author / Source",
+    "Book Author",
+    "Author",
+    "Authors",
+    "Writer",
+    "By",
+    "Name of Author",
+]
+MATERIAL_ISBN_COL_PRIORITY = [
+    "Book ISBN",
+    "ISBN / Identifier",
+    "ISBN",
+    "ISBN-13",
+    "ISBN13",
+    "ISBN Number",
+    "EAN",
+]
+
+
+def _coalesce_citation_column(
+    df: pd.DataFrame, col_names: List[str], normalizer
+) -> pd.Series:
+    """
+    For each row, return the first non-empty normalized value from col_names (left = preferred).
+    """
+    if not col_names or len(df) == 0:
+        if len(df) == 0:
+            return pd.Series([], index=df.index, dtype=object)
+        return pd.Series([""] * len(df), index=df.index, dtype=object)
+    out: list = [""] * len(df)
+    for j, ridx in enumerate(df.index.tolist()):
+        for c in col_names:
+            if c not in df.columns:
+                continue
+            v = normalizer(df.at[ridx, c])
+            if v:
+                out[j] = v
+                break
+    return pd.Series(out, index=df.index, dtype=object)
+
+
 def _finalize_material_frame(
     raw: pd.DataFrame,
     title_col: str,
@@ -323,13 +368,6 @@ def get_recommended_materials(
     desc_col = find_col(
         material_df, ["Description", "Short Description", "Summary", "Details", "Desc"]
     )
-    author_col = find_col(
-        material_df,
-        ["Author", "Authors", "Writer", "By", "Name of Author", "Book Author"],
-    )
-    isbn_col = find_col(
-        material_df, ["ISBN", "ISBN-13", "ISBN13", "ISBN Number", "Book ISBN", "EAN"],
-    )
 
     if not title_col or not module_id_col:
         return _EMPTY_RECS.copy(), "none"
@@ -396,6 +434,16 @@ def get_recommended_materials(
     if rec_mode == "none" or picked is None or picked.empty:
         return _EMPTY_RECS.copy(), "none"
 
+    picked = picked.copy()
+    author_from = [c for c in MATERIAL_AUTHOR_COL_PRIORITY if c in picked.columns]
+    isbn_from = [c for c in MATERIAL_ISBN_COL_PRIORITY if c in picked.columns]
+    picked["__author_merged__"] = _coalesce_citation_column(
+        picked, author_from, _normalize_author_cell
+    )
+    picked["__isbn_merged__"] = _coalesce_citation_column(
+        picked, isbn_from, _normalize_isbn_cell
+    )
+
     out = _finalize_material_frame(
         picked,
         title_col,
@@ -404,8 +452,8 @@ def get_recommended_materials(
         type_col,
         desc_col,
         module_id_col,
-        author_col,
-        isbn_col,
+        "__author_merged__",
+        "__isbn_merged__",
     )
     return out, rec_mode
 
@@ -1108,7 +1156,7 @@ def main() -> None:
         questions = parse_questions(data["Question Bank"])
     except FileNotFoundError:
         st.error(
-            "Workbook not found at `./Excel_Readiness_AI_Coach_Content_Pack_with_sources.xlsx`.\n\n"
+            "Workbook not found at `./Excel_Readiness_AI_Coach_Content_Pack_with_books.xlsx`.\n\n"
             "Please place the file in the project root and try again."
         )
         st.stop()

@@ -46,7 +46,7 @@ if (-not (Test-Path ".git")) {
     & $git branch -M main
 }
 
-& $git add app.py requirements.txt .gitignore Excel_Readiness_AI_Coach_Content_Pack.xlsx README.md push-to-github.ps1
+& $git add app.py requirements.txt .gitignore Excel_Readiness_AI_Coach_Content_Pack.xlsx Excel_Readiness_AI_Coach_Content_Pack_with_books.xlsx README.md push-to-github.ps1
 if (Test-Path ".streamlit\config.toml") { & $git add .streamlit\config.toml }
 & $git status
 & $git commit -m "Excel Readiness AI Coach - initial commit" 2>$null
