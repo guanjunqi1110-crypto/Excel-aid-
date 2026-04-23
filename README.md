@@ -1,8 +1,8 @@
 # Excel Readiness AI Coach
 
-Streamlit prototype that diagnoses Excel and business workflow readiness for new accounting and finance students, using the bundled **Excel_Readiness_AI_Coach_Content_Pack.xlsx**.
+Streamlit prototype that diagnoses Excel and business workflow readiness for new accounting and finance students, using the bundled **`Excel_Readiness_AI_Coach_Content_Pack_with_sources.xlsx`** (older `Excel_Readiness_AI_Coach_Content_Pack.xlsx` is optional/legacy in the repo).
 
-**Project folder on this PC:** `C:\Users\guanj\excel-readiness-ai-coach\`
+**Project folder on this PC (may vary):** e.g. `C:\Users\guanj\Downloads\` (Streamlit `app.py` and content pack in the same folder, or a dedicated project folder)
 
 ## Run locally
 
