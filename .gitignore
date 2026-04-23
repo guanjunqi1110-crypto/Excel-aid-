@@ -1,11 +1,15 @@
-# This folder is a full "Downloads" directory. Only the Streamlit app and content pack
-# are tracked to avoid pushing unrelated files.
+# This folder is often a full Windows "Downloads" directory. Only track the app and
+# related files to avoid committing unrelated downloads.
 /*
 !.gitignore
 !app.py
 !requirements.txt
 !openai_key_local.txt.example
+!README.md
+!push-to-github.ps1
+!Excel_Readiness_AI_Coach_Content_Pack.xlsx
 !Excel_Readiness_AI_Coach_Content_Pack_with_sources.xlsx
+!.streamlit/
 
 # Local API keys (do not commit)
 .streamlit/secrets.toml
