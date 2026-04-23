@@ -1,0 +1,23 @@
+# This folder is a full "Downloads" directory. Only the Streamlit app and content pack
+# are tracked to avoid pushing unrelated files.
+/*
+!.gitignore
+!app.py
+!requirements.txt
+!openai_key_local.txt.example
+!Excel_Readiness_AI_Coach_Content_Pack_with_sources.xlsx
+
+# Local API keys (do not commit)
+.streamlit/secrets.toml
+openai_key_local.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
